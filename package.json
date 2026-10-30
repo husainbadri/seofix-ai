@@ -1,0 +1,20 @@
+{
+  "name": "ai-seo-platform-root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev:api": "npm --workspace=apps/api run dev",
+    "dev:web": "npm --workspace=apps/web run dev",
+    "db:push": "npm --workspace=packages/database run db:push",
+    "db:generate": "npm --workspace=packages/database run db:generate"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

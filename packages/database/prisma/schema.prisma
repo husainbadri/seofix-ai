@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum AuditSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum CrawlStatus {
+  PENDING
+  CRAWLING
+  AUDITING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspaces WorkspaceMember[]
+}
+
+model Workspace {
+  id                 String            @id @default(uuid())
+  name               String
+  slug               String            @unique
+  logoUrl            String?
+  agencyName         String?
+  brandColor         String?           @default("#4F46E5")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  members            WorkspaceMember[]
+  projects           Project[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  userId      String
+  workspaceId String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+model Project {
+  id              String      @id @default(uuid())
+  workspaceId     String
+  name            String
+  domain          String
+  targetKeywords  String[]    @default([])
+  scheduleCron    String?     @default("0 0 * * 0")
+  lastAuditedAt   DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  crawlJobs       CrawlJob[]
+  trackedKeywords TrackedKeyword[]
+  backlinks       Backlink[]
+  competitors     Competitor[]
+  integrations    GoogleCredentials?
+  reports         WhiteLabelReport[]
+  humanizedLogs   AIHumanizedContent[]
+}
+
+model CrawlJob {
+  id            String      @id @default(uuid())
+  projectId     String
+  status        CrawlStatus @default(PENDING)
+  pagesCrawled  Int         @default(0)
+  totalPages    Int         @default(0)
+  startedAt     DateTime    @default(now())
+  completedAt   DateTime?
+  error         String?
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  crawledPages  CrawledPage[]
+  auditResults  AuditResult[]
+  summary       OverallAuditSummary?
+}
+
+model CrawledPage {
+  id              String   @id @default(uuid())
+  crawlJobId      String
+  url             String
+  statusCode      Int
+  loadTimeMs      Int
+  title           String?
+  metaDescription String?
+  contentType     String?
+  depth           Int      @default(0)
+  htmlSize        Int      @default(0)
+  domNodes        Int      @default(0)
+  crawlJob        CrawlJob @relation(fields: [crawlJobId], references: [id], onDelete: Cascade)
+}
+
+model AuditResult {
+  id              String        @id @default(uuid())
+  crawlJobId      String
+  pageUrl         String
+  category        String
+  subSkill        String
+  severity        AuditSeverity
+  score           Float
+  title           String
+  description     String
+  recommendation  String
+  aiFixCode       String?
+  estimatedImpact Int           @default(50)
+  crawlJob        CrawlJob      @relation(fields: [crawlJobId], references: [id], onDelete: Cascade)
+}
+
+model OverallAuditSummary {
+  id                 String   @id @default(uuid())
+  projectId          String
+  crawlJobId         String   @unique
+  overallScore       Float
+  technicalScore     Float
+  performanceScore   Float
+  contentScore       Float
+  securityScore      Float
+  accessibilityScore Float
+  keywordScore       Float
+  backlinkScore      Float
+  totalIssues        Int
+  criticalCount      Int
+  highCount          Int
+  quickWinsCount     Int
+  executiveSummary   String
+  createdAt          DateTime @default(now())
+  crawlJob           CrawlJob @relation(fields: [crawlJobId], references: [id], onDelete: Cascade)
+}
+
+model TrackedKeyword {
+  id             String   @id @default(uuid())
+  projectId      String
+  keyword        String
+  targetLocation String   @default("United States")
+  currentRank    Int?
+  previousRank   Int?
+  searchVolume   Int      @default(0)
+  difficulty     Float    @default(0.0)
+  cpc            Float    @default(0.0)
+  intent         String   @default("Informational")
+  serpFeatures   String[] @default([])
+  updatedAt      DateTime @updatedAt
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Backlink {
+  id              String   @id @default(uuid())
+  projectId       String
+  sourceUrl       String
+  targetUrl       String
+  anchorText      String
+  isDoFollow      Boolean  @default(true)
+  domainAuthority Float    @default(0.0)
+  pageAuthority   Float    @default(0.0)
+  spamScore       Float    @default(0.0)
+  detectedAt      DateTime @default(now())
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Competitor {
+  id                   String   @id @default(uuid())
+  projectId            String
+  domain               String
+  overlapScore         Float    @default(0.0)
+  organicKeywordsCount Int      @default(0)
+  estimatedTraffic     Int      @default(0)
+  commonKeywords       String[] @default([])
+  updatedAt            DateTime @updatedAt
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model GoogleCredentials {
+  id                     String   @id @default(uuid())
+  projectId              String   @unique
+  gscSiteUrl             String?
+  ga4PropertyId          String?
+  googleAdsDeveloperToken String?
+  googleAdsCustomerId     String?
+  refreshToken           String?
+  updatedAt              DateTime @updatedAt
+  project                Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model AIHumanizedContent {
+  id              String   @id @default(uuid())
+  projectId       String
+  originalText    String
+  humanizedText   String
+  burstinessScore Float    @default(85.0)
+  perplexityScore Float    @default(78.5)
+  tone            String   @default("Conversational")
+  createdAt       DateTime @default(now())
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model WhiteLabelReport {
+  id              String   @id @default(uuid())
+  projectId       String
+  title           String
+  agencyName      String
+  logoUrl         String?
+  primaryColor    String   @default("#4F46E5")
+  shareableToken  String   @unique @default(uuid())
+  pdfUrl          String?
+  csvUrl          String?
+  excelUrl        String?
+  createdAt       DateTime @default(now())
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
