@@ -15,6 +15,7 @@
 const http = require('http');
 const https = require('https');
 const urlModule = require('url');
+const { AEOEngine } = require('./src/services/aeo-engine.js');
 
 const PORT = process.env.PORT || 3000;
 const CRAWLER_PORT = process.env.CRAWLER_PORT || 7001;
@@ -94,6 +95,86 @@ class SEOFixStore {
           trendStr: '↑ +22.4%',
           trendIsPositive: true,
           model: 'SERP Keyword Benchmark Projection'
+        },
+        aeo: {
+          aeoScore: 78,
+          aeoScoreExact: 78.5,
+          aeoGrade: 'B+',
+          citationPotential: 'High',
+          metrics: {
+            directAnswerReadinessPct: 67,
+            aiBotAccessCount: 6,
+            aiBotTotalCount: 6,
+            tableCount: 2,
+            listCount: 5,
+            dataPointCount: 14,
+            questionHeadingCount: 3,
+            hasFaqSchema: true,
+            hasHowToSchema: false,
+            hasWikidataEntityLinks: false,
+            schemaTypes: ['WebSite', 'FAQPage'],
+            avgAnswerWordCount: 48,
+          },
+          aiBots: [
+            { bot: 'OAI-SearchBot', name: 'OpenAI SearchBot', platform: 'ChatGPT Search', allowed: true, directive: 'Allow' },
+            { bot: 'GPTBot', name: 'OpenAI GPTBot', platform: 'OpenAI Crawler', allowed: true, directive: 'Allow' },
+            { bot: 'PerplexityBot', name: 'PerplexityBot', platform: 'Perplexity AI', allowed: true, directive: 'Allow' },
+            { bot: 'ClaudeBot', name: 'ClaudeBot', platform: 'Anthropic Claude', allowed: true, directive: 'Default (Allowed)' },
+            { bot: 'Google-Extended', name: 'Google-Extended', platform: 'Gemini Training', allowed: true, directive: 'Default (Allowed)' },
+            { bot: 'CCBot', name: 'Common Crawl', platform: 'LLM Corpora', allowed: true, directive: 'Default (Allowed)' },
+          ],
+          questionAnswers: [
+            {
+              heading: 'How does Acme SaaS automate technical SEO?',
+              level: 'h2',
+              extractedAnswer: 'Acme SaaS runs continuous automated headless crawls to verify 18 on-page technical factors, Core Web Vitals, and AI search crawler directives, generating ready-to-deploy code patches within seconds.',
+              wordCount: 30,
+              isDirectAnswer: true,
+              snippetSuitability: 'Excellent'
+            },
+            {
+              heading: 'What metrics are tracked for Core Web Vitals?',
+              level: 'h2',
+              extractedAnswer: 'We monitor Largest Contentful Paint (LCP < 2.5s), Cumulative Layout Shift (CLS < 0.1), and Interaction to Next Paint (INP < 200ms) with mobile simulation to ensure Google compliance.',
+              wordCount: 27,
+              isDirectAnswer: true,
+              snippetSuitability: 'Excellent'
+            },
+            {
+              heading: 'Why is AEO critical for modern organic traffic?',
+              level: 'h2',
+              extractedAnswer: 'Answer engines like ChatGPT Search and Perplexity synthesize direct answers from indexed pages. Without structured direct answer paragraphs and unblocked crawler access, brand visibility drops by up to 60%.',
+              wordCount: 31,
+              isDirectAnswer: true,
+              snippetSuitability: 'Excellent'
+            }
+          ],
+          topCiteableSnippets: [
+            "\"Acme SaaS runs continuous automated headless crawls to verify 18 on-page technical factors, Core Web Vitals, and AI search crawler directives, generating ready-to-deploy code patches within seconds.\"",
+            "\"We monitor Largest Contentful Paint (LCP < 2.5s), Cumulative Layout Shift (CLS < 0.1), and Interaction to Next Paint (INP < 200ms) with mobile simulation to ensure Google compliance.\""
+          ],
+          recommendedFaqSchema: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "How does Acme SaaS automate technical SEO?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Acme SaaS runs continuous automated headless crawls to verify 18 on-page technical factors, Core Web Vitals, and AI search crawler directives, generating ready-to-deploy code patches within seconds."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What metrics are tracked for Core Web Vitals?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "We monitor Largest Contentful Paint (LCP < 2.5s), Cumulative Layout Shift (CLS < 0.1), and Interaction to Next Paint (INP < 200ms) with mobile simulation to ensure Google compliance."
+                }
+              }
+            ]
+          }, null, 2)
         },
       },
 
@@ -488,7 +569,7 @@ function fetchPageHttp(targetUrl, timeoutMs = 12000) {
 }
 
 // ── Precision 18-Check Audit Engine (40% Tech / 35% Content / 25% Perf) ────────
-function evaluateAuditPrecision(pages, psiMetrics = null) {
+function evaluateAuditPrecision(pages, psiMetrics = null, robotsTxt = '') {
   const issues = [];
   const passedChecks = [];
 
@@ -857,6 +938,47 @@ function evaluateAuditPrecision(pages, psiMetrics = null) {
 
   const firstPageMeta = pages[0]?.parsed || {};
 
+  // ── AEO & GEO Engine Analysis ──────────────────────────────────────────────
+  const primaryPage = pages[0] || {};
+  const primaryHtml = primaryPage.rawHtml || primaryPage.html || '';
+  const primaryUrl = primaryPage.url || 'https://acme-saas.com';
+  const aeoResult = AEOEngine.analyzeAEO(primaryHtml, primaryUrl, robotsTxt);
+
+  // Append AEO issues
+  if (aeoResult && aeoResult.issues) {
+    aeoResult.issues.forEach(iss => {
+      issues.push({
+        pageUrl: primaryUrl,
+        type: iss.type,
+        severity: iss.severity,
+        description: iss.description,
+        category: 'aeo',
+        suggestedFix: iss.suggestedFix,
+      });
+    });
+  }
+
+  // Append AEO checks to passedChecks if passing
+  const blockedBots = (aeoResult.aiBots || []).filter(b => !b.allowed);
+  if (blockedBots.length === 0) {
+    passedChecks.push({
+      title: 'AI Search Bot Access (OAI-SearchBot & Perplexity)',
+      detail: 'All major AI search crawlers are allowed in robots.txt for real-time generative citations.'
+    });
+  }
+  if (aeoResult.metrics.hasFaqSchema) {
+    passedChecks.push({
+      title: 'Schema.org FAQ Structure',
+      detail: 'Valid FAQPage schema detected for direct Google AI Overview & SearchGPT extraction.'
+    });
+  }
+  if (aeoResult.metrics.questionHeadingCount > 0 && aeoResult.metrics.directAnswerReadinessPct >= 50) {
+    passedChecks.push({
+      title: 'AEO Direct Answer Readiness',
+      detail: `${aeoResult.metrics.directAnswerReadinessPct}% of question headings have 30–75 word direct answer paragraphs.`
+    });
+  }
+
   return {
     scoreOverall,
     scoreOverallExact,
@@ -866,6 +988,7 @@ function evaluateAuditPrecision(pages, psiMetrics = null) {
     grade,
     issues,
     passedChecks,
+    aeo: aeoResult,
     metrics: {
       lcp: lcpVal,
       cls: clsVal,
@@ -875,6 +998,7 @@ function evaluateAuditPrecision(pages, psiMetrics = null) {
       speedIndex: psiMetrics?.speedIndex || 1620,
       performanceScore: Math.round(scorePerformance),
       device: 'mobile',
+      aeo: aeoResult,
       textToHtmlRatioPct: firstPageMeta.textToHtmlRatioPct || 18.6,
       altCoveragePct: firstPageMeta.altCoveragePct || 100.0,
       totalImages: firstPageMeta.totalImages || 0,
@@ -1040,6 +1164,31 @@ function generateAiRecommendationExpanded(issue, domain = 'example.com') {
       explanation: 'Server Time to First Byte (TTFB) under 200ms ensures swift crawler fetch cycles and lower bounce rates.',
       impact: 'Medium',
     },
+    ai_bot_blocked: {
+      fix: `# Allow AI Search Engines in robots.txt\nUser-agent: OAI-SearchBot\nAllow: /\n\nUser-agent: PerplexityBot\nAllow: /\n\nUser-agent: ClaudeBot\nAllow: /`,
+      explanation: 'Unblocking AI crawlers like OAI-SearchBot and PerplexityBot allows ChatGPT Search and Perplexity to index, extract, and cite your content in real-time answers.',
+      impact: 'High',
+    },
+    missing_direct_answer: {
+      fix: `<!-- Apply Inverted Pyramid Structure -->\n<h2>How does ${topic} benefit enterprise teams?</h2>\n<p>${topic} provides automated technical SEO audits, real-time Core Web Vitals diagnostics, and AI-driven code patches that reduce engineering overhead by 65%.</p>`,
+      explanation: 'Answer engines prioritize 30–75 word paragraphs directly following clear question headings for generative snippets and citations.',
+      impact: 'High',
+    },
+    missing_faq_schema: {
+      fix: `<script type="application/ld+json">\n{\n  "@context": "https://schema.org",\n  "@type": "FAQPage",\n  "mainEntity": [{\n    "@type": "Question",\n    "name": "What is ${topic}?",\n    "acceptedAnswer": {\n      "@type": "Answer",\n      "text": "${topic} is an automated SEO optimization platform that audits technical factors, Core Web Vitals, and AEO citation readiness."\n    }\n  }]\n}\n</script>`,
+      explanation: 'FAQPage structured data gives Google AI Overviews and SearchGPT direct Question-Answer nodes for synthesis.',
+      impact: 'High',
+    },
+    no_entity_links: {
+      fix: `<script type="application/ld+json">\n{\n  "@context": "https://schema.org",\n  "@type": "Organization",\n  "name": "${topic}",\n  "url": "https://${domain}",\n  "sameAs": [\n    "https://www.wikidata.org/wiki/Q11088",\n    "https://en.wikipedia.org/wiki/Search_engine_optimization"\n  ]\n}\n</script>`,
+      explanation: 'Connecting your organization or topic to Wikidata IDs disambiguates your entity in AI knowledge graphs.',
+      impact: 'Medium',
+    },
+    low_table_density: {
+      fix: `<table class="comparison-matrix">\n  <thead>\n    <tr><th>Capability</th><th>Manual SEO</th><th>${topic} AI</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Audit Frequency</td><td>Monthly</td><td>Continuous Real-time</td></tr>\n    <tr><td>AEO Direct Answers</td><td>No</td><td>Automated Extraction</td></tr>\n  </tbody>\n</table>`,
+      explanation: 'Tabular comparisons and structured bullet points have a 3.4x higher citation rate in generative answer engines.',
+      impact: 'Medium',
+    },
   };
 
   const selected = map[type] || {
@@ -1154,6 +1303,12 @@ const HTML_APP = `<!DOCTYPE html>
       </button>
       <button onclick="switchTab('checklist')" id="btn-checklist" class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60">
         <span>✅ 18-Point Audit Checklist</span>
+      </button>
+      <button onclick="switchTab('aeo')" id="btn-aeo" class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60">
+        <span class="flex items-center justify-between w-full">
+          <span>🤖 AEO & AI Search</span>
+          <span class="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-mono font-bold">GEO</span>
+        </span>
       </button>
       <button onclick="switchTab('issues')" id="btn-issues" class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60">
         <span>⚠️ Issues & AI Fixes</span>
@@ -1418,6 +1573,28 @@ const HTML_APP = `<!DOCTYPE html>
           </div>
         </div>
 
+        <!-- AEO & Generative AI Search Highlight Banner -->
+        <div class="glass-panel p-5 rounded-2xl border border-purple-500/20 bg-gradient-to-r from-slate-900 via-purple-950/20 to-slate-900 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-purple-900/40 border border-purple-500/30 flex items-center justify-center text-2xl shrink-0">
+              🤖
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <h3 class="text-sm font-bold text-white">Answer Engine Optimization (AEO) & Generative Citations</h3>
+                <span id="overview-aeo-badge" class="text-[11px] bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded-full font-bold">Grade B+ (78.5)</span>
+              </div>
+              <p class="text-xs text-slate-300 mt-0.5">
+                Evaluated for ChatGPT Search, Perplexity AI & Google AI Overviews. <span id="overview-aeo-stats">6 of 6 AI bots allowed • 67% Direct Answer readiness.</span>
+              </p>
+            </div>
+          </div>
+          <button onclick="switchTab('aeo')" class="px-4 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 border border-purple-500/40 text-xs font-semibold transition shrink-0 flex items-center space-x-2">
+            <span>Inspect AEO Citations</span>
+            <span>→</span>
+          </button>
+        </div>
+
         <!-- Quick Wins Section -->
         <div class="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
           <div class="flex justify-between items-center">
@@ -1457,6 +1634,237 @@ const HTML_APP = `<!DOCTYPE html>
           <div class="divide-y divide-slate-800" id="checklist-items-container">
             <!-- Populated by JS -->
           </div>
+        </div>
+      </div>
+
+      <!-- TAB: AEO & AI SEARCH (GEO) -->
+      <div id="tab-aeo" class="space-y-6 hidden">
+        <!-- AEO Hero Header -->
+        <div class="glass-panel p-6 rounded-2xl border border-purple-500/20 bg-gradient-to-r from-slate-900 via-purple-950/25 to-slate-900">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div class="flex items-center space-x-3">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                  <span>🤖</span> Answer Engine Optimization (AEO) & Generative Search
+                </h2>
+                <span id="aeo-grade-badge" class="text-xs bg-purple-950 text-purple-300 border border-purple-800 px-2.5 py-0.5 rounded-full font-bold">Grade B+ (78.5 / 100)</span>
+              </div>
+              <p class="text-xs text-slate-300 mt-1">
+                Optimized for real-time citation extraction in <strong class="text-white">ChatGPT Search</strong>, <strong class="text-white">Perplexity AI</strong>, <strong class="text-white">Google AI Overviews</strong>, and <strong class="text-white">Claude</strong>.
+              </p>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span id="aeo-potential-pill" class="px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-800 rounded-lg text-xs font-mono font-semibold">Citation Potential: High</span>
+            </div>
+          </div>
+
+          <!-- AEO KPI Grid -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4 mt-4 border-t border-slate-800 text-xs">
+            <div class="p-3 bg-slate-950/70 rounded-xl border border-slate-800">
+              <span class="text-slate-400 block text-[11px]">Direct Answer Readiness</span>
+              <span class="text-purple-400 font-bold text-sm" id="aeo-kpi-direct-pct">67%</span>
+              <span class="text-[10px] text-slate-500 block">30–75 words inverted pyramid</span>
+            </div>
+            <div class="p-3 bg-slate-950/70 rounded-xl border border-slate-800">
+              <span class="text-slate-400 block text-[11px]">AI Bot Accessibility</span>
+              <span class="text-emerald-400 font-bold text-sm" id="aeo-kpi-bot-access">6 / 6 Allowed</span>
+              <span class="text-[10px] text-slate-500 block">Unblocked in robots.txt</span>
+            </div>
+            <div class="p-3 bg-slate-950/70 rounded-xl border border-slate-800">
+              <span class="text-slate-400 block text-[11px]">Information Gain Density</span>
+              <span class="text-indigo-400 font-bold text-sm" id="aeo-kpi-info-gain">2 Tables, 14 Metrics</span>
+              <span class="text-[10px] text-slate-500 block">High tabular & data density</span>
+            </div>
+            <div class="p-3 bg-slate-950/70 rounded-xl border border-slate-800">
+              <span class="text-slate-400 block text-[11px]">Knowledge Graph Schema</span>
+              <span class="text-amber-400 font-bold text-sm" id="aeo-kpi-schema-status">FAQPage Active</span>
+              <span class="text-[10px] text-slate-500 block">Schema.org JSON-LD</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 1: AI Search Bot Access Matrix & Inverted Pyramid Guidelines -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Bot Access Matrix (2 cols) -->
+          <div class="lg:col-span-2 glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                  <span>🕷️</span> AI Search Engine Crawler Access Matrix
+                </h3>
+                <p class="text-xs text-slate-400">Status of major generative search crawlers in your site's <code class="font-mono text-indigo-300">robots.txt</code>.</p>
+              </div>
+              <span class="text-[11px] font-mono text-purple-400 bg-purple-950/60 border border-purple-800/60 px-2 py-0.5 rounded">Robots.txt Audit</span>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-800 text-slate-400">
+                    <th class="py-2 px-3 font-semibold">User-Agent</th>
+                    <th class="py-2 px-3 font-semibold">Platform & Engine</th>
+                    <th class="py-2 px-3 font-semibold">Directive</th>
+                    <th class="py-2 px-3 font-semibold">Citation Impact</th>
+                    <th class="py-2 px-3 font-semibold text-right">Access Status</th>
+                  </tr>
+                </thead>
+                <tbody id="aeo-bot-matrix-body" class="divide-y divide-slate-800/60">
+                  <!-- Injected by loadAEO() -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-xs text-slate-300 flex items-start space-x-3">
+              <span class="text-amber-400 text-base">💡</span>
+              <div>
+                <strong class="text-white block">Robots.txt Best Practice for Generative Engines</strong>
+                <span class="text-slate-400">To maximize live visibility in ChatGPT Search and Perplexity while restricting model scraping, explicitly allow <code class="text-indigo-300">OAI-SearchBot</code> and <code class="text-indigo-300">PerplexityBot</code>.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- AEO Inverted Pyramid Checklist (1 col) -->
+          <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span>📐</span> AEO Inverted Pyramid Rules
+            </h3>
+            <p class="text-xs text-slate-400">How LLMs select snippets for synthesized answers.</p>
+
+            <div class="space-y-3 text-xs">
+              <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800 space-y-1">
+                <div class="flex items-center justify-between">
+                  <strong class="text-indigo-300">1. Direct 30–75 Word Answers</strong>
+                  <span class="text-[10px] text-emerald-400">3.8x Higher Citation</span>
+                </div>
+                <p class="text-slate-400 text-[11px]">Place the direct factual answer immediately below the question heading, before background context.</p>
+              </div>
+
+              <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800 space-y-1">
+                <div class="flex items-center justify-between">
+                  <strong class="text-indigo-300">2. Tabular Comparison Matrices</strong>
+                  <span class="text-[10px] text-emerald-400">High Information Gain</span>
+                </div>
+                <p class="text-slate-400 text-[11px]">Use clean HTML &lt;table&gt; structures for feature comparisons and pricing breakdowns.</p>
+              </div>
+
+              <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800 space-y-1">
+                <div class="flex items-center justify-between">
+                  <strong class="text-indigo-300">3. Entity Disambiguation</strong>
+                  <span class="text-[10px] text-emerald-400">Wikidata sameAs</span>
+                </div>
+                <p class="text-slate-400 text-[11px]">Add authoritative Wikidata or Wikipedia entity URLs to your JSON-LD Organization schema.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Question-to-Answer Extractor -->
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <span>🎯</span> Question Headings & Direct Answer Extractor
+              </h3>
+              <p class="text-xs text-slate-400">Inspects your page's H2/H3 question triggers and measures immediate paragraph word counts.</p>
+            </div>
+            <span id="aeo-qa-count-badge" class="text-xs font-mono bg-indigo-950 text-indigo-400 border border-indigo-800 px-2.5 py-0.5 rounded-full">3 Questions Extracted</span>
+          </div>
+
+          <div class="space-y-3" id="aeo-qa-list-container">
+            <!-- Injected by loadAEO() -->
+          </div>
+        </div>
+
+        <!-- Row 3: Perplexity & ChatGPT Search Live Citation Simulator -->
+        <div class="glass-panel p-6 rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-slate-900 via-indigo-950/20 to-slate-900 space-y-5">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <span>🔮</span> Perplexity AI & ChatGPT Search Citation Simulator
+              </h3>
+              <p class="text-xs text-slate-400">Test how answer engines synthesize queries and cite your page in real-time search results.</p>
+            </div>
+            <span class="text-[11px] font-mono bg-purple-950 text-purple-400 border border-purple-800 px-2 py-0.5 rounded">LLM RAG Retrieval Engine</span>
+          </div>
+
+          <!-- Query Input Bar -->
+          <div class="flex flex-col sm:flex-row gap-2">
+            <div class="flex-1 flex items-center space-x-2 bg-slate-950 px-3 py-2 rounded-xl border border-slate-800">
+              <span class="text-slate-500">🔎</span>
+              <input
+                id="aeo-sim-query-input"
+                type="text"
+                placeholder="Ask an answer engine a question about your site..."
+                class="bg-transparent flex-1 text-xs font-mono text-white outline-none placeholder-slate-600"
+                onkeydown="if(event.key==='Enter') runAeoSimulate()"
+              />
+            </div>
+            <button
+              onclick="runAeoSimulate()"
+              id="aeo-sim-btn"
+              class="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-purple-600/30 transition flex items-center justify-center space-x-2 shrink-0"
+            >
+              <span>▶</span>
+              <span id="aeo-sim-btn-text">Simulate AI Answer</span>
+            </button>
+          </div>
+
+          <!-- Suggested Query Pills -->
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span class="text-slate-500 text-[11px]">Sample Queries:</span>
+            <div id="aeo-sample-queries" class="flex flex-wrap gap-2">
+              <!-- Injected by loadAEO() -->
+            </div>
+          </div>
+
+          <!-- Simulator Output Preview Box -->
+          <div id="aeo-sim-result-box" class="p-5 bg-slate-950/90 rounded-xl border border-slate-800 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></span>
+                <span id="aeo-sim-engine-name" class="font-bold text-xs text-white">Perplexity AI & ChatGPT Search Simulator</span>
+                <span class="text-[10px] text-slate-400 font-mono" id="aeo-sim-model-tag">gpt-4o-search-preview</span>
+              </div>
+              <span id="aeo-sim-confidence" class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-mono font-semibold">96% Grounded Confidence</span>
+            </div>
+
+            <!-- Answer Paragraph with Citation Link Pill -->
+            <div class="text-xs text-slate-200 leading-relaxed space-y-2">
+              <p id="aeo-sim-answer-text">
+                According to <strong class="text-white">acme-saas.com</strong>, Acme SaaS runs continuous automated headless crawls to verify 18 on-page technical factors, Core Web Vitals, and AI search crawler directives, generating ready-to-deploy code patches within seconds. <span class="inline-flex items-center justify-center w-4 h-4 text-[10px] bg-purple-600 text-white rounded-full font-bold ml-1">[1]</span>
+              </p>
+            </div>
+
+            <!-- Citation Source Card -->
+            <div class="pt-3 border-t border-slate-800">
+              <span class="text-[11px] text-slate-400 block mb-2 font-semibold">Primary Citations & Grounding Sources:</span>
+              <div id="aeo-sim-sources-container" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <!-- Injected by JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 4: One-Click Schema.org FAQPage Generator -->
+        <div class="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <span>📋</span> One-Click Schema.org FAQPage JSON-LD Generator
+              </h3>
+              <p class="text-xs text-slate-400">Embed this structured markup in your HTML &lt;head&gt; so Google AI Overviews and SearchGPT extract direct Q&A entities.</p>
+            </div>
+            <button
+              onclick="copyAeoSchema()"
+              id="btn-copy-faq-schema"
+              class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition flex items-center space-x-1.5"
+            >
+              <span>📋</span>
+              <span id="btn-copy-faq-text">Copy FAQ JSON-LD</span>
+            </button>
+          </div>
+
+          <pre class="p-4 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-indigo-300 overflow-x-auto max-h-60 leading-relaxed"><code id="aeo-faq-code">// Loading schema...</code></pre>
         </div>
       </div>
 
@@ -1772,7 +2180,7 @@ const HTML_APP = `<!DOCTYPE html>
 
     // ── Tab switcher ──────────────────────────────────────────────────────────
     function switchTab(tabId) {
-      const tabs = ['overview', 'checklist', 'issues', 'pagespeed', 'pages', 'projects', 'ai-assistant', 'humanizer', 'reports', 'settings'];
+      const tabs = ['overview', 'checklist', 'aeo', 'issues', 'pagespeed', 'pages', 'projects', 'ai-assistant', 'humanizer', 'reports', 'settings'];
       tabs.forEach(t => {
         const el = document.getElementById('tab-' + t);
         const btn = document.getElementById('btn-' + t);
@@ -1788,6 +2196,7 @@ const HTML_APP = `<!DOCTYPE html>
       if (tabId === 'issues') loadIssues();
       if (tabId === 'pages') loadPages();
       if (tabId === 'checklist') loadChecklist();
+      if (tabId === 'aeo') loadAEO();
     }
 
     // ── Load 18-Point Checklist ───────────────────────────────────────────────
@@ -1834,6 +2243,251 @@ const HTML_APP = `<!DOCTYPE html>
       } catch (e) {
         console.error(e);
       }
+    }
+
+    // ── Load AEO & GEO Dashboard ──────────────────────────────────────────────
+    async function loadAEO() {
+      try {
+        const res = await fetch('/api/audits/latest?projectId=' + activeProjectId);
+        const data = await res.json();
+        const a = data.audit || {};
+        const aeo = a.aeo || a.metrics?.aeo || {
+          aeoScore: 78,
+          aeoScoreExact: 78.5,
+          aeoGrade: 'B+',
+          citationPotential: 'High',
+          metrics: {
+            directAnswerReadinessPct: 67,
+            aiBotAccessCount: 6,
+            aiBotTotalCount: 6,
+            tableCount: 2,
+            listCount: 5,
+            dataPointCount: 14,
+            questionHeadingCount: 3,
+            hasFaqSchema: true,
+          },
+          aiBots: [
+            { bot: 'OAI-SearchBot', name: 'OpenAI SearchBot', platform: 'ChatGPT Search', allowed: true, directive: 'Allow' },
+            { bot: 'GPTBot', name: 'OpenAI GPTBot', platform: 'OpenAI Crawler', allowed: true, directive: 'Allow' },
+            { bot: 'PerplexityBot', name: 'PerplexityBot', platform: 'Perplexity AI', allowed: true, directive: 'Allow' },
+            { bot: 'ClaudeBot', name: 'ClaudeBot', platform: 'Anthropic Claude', allowed: true, directive: 'Default (Allowed)' },
+            { bot: 'Google-Extended', name: 'Google-Extended', platform: 'Gemini Training', allowed: true, directive: 'Default (Allowed)' },
+            { bot: 'CCBot', name: 'Common Crawl', platform: 'LLM Corpora', allowed: true, directive: 'Default (Allowed)' },
+          ],
+          questionAnswers: [
+            {
+              heading: 'How does Acme SaaS automate technical SEO?',
+              level: 'h2',
+              extractedAnswer: 'Acme SaaS runs continuous automated headless crawls to verify 18 on-page technical factors, Core Web Vitals, and AI search crawler directives, generating ready-to-deploy code patches within seconds.',
+              wordCount: 30,
+              isDirectAnswer: true,
+              snippetSuitability: 'Excellent'
+            },
+            {
+              heading: 'What metrics are tracked for Core Web Vitals?',
+              level: 'h2',
+              extractedAnswer: 'We monitor Largest Contentful Paint (LCP < 2.5s), Cumulative Layout Shift (CLS < 0.1), and Interaction to Next Paint (INP < 200ms) with mobile simulation to ensure Google compliance.',
+              wordCount: 27,
+              isDirectAnswer: true,
+              snippetSuitability: 'Excellent'
+            },
+            {
+              heading: 'Why is AEO critical for modern organic traffic?',
+              level: 'h2',
+              extractedAnswer: 'Answer engines synthesize direct answers from indexed pages. Without structured direct answer paragraphs and unblocked crawler access, brand visibility drops substantially.',
+              wordCount: 24,
+              isDirectAnswer: false,
+              snippetSuitability: 'Too Short'
+            }
+          ],
+          recommendedFaqSchema: '{\\n  "@context": "https://schema.org",\\n  "@type": "FAQPage"\\n}'
+        };
+
+        // Header and KPIs
+        const gradeBadge = document.getElementById('aeo-grade-badge');
+        if (gradeBadge) gradeBadge.innerText = 'Grade ' + (aeo.aeoGrade || 'B+') + ' (' + (aeo.aeoScoreExact || aeo.aeoScore || 78) + ' / 100)';
+        const potPill = document.getElementById('aeo-potential-pill');
+        if (potPill) {
+          potPill.innerText = 'Citation Potential: ' + (aeo.citationPotential || 'High');
+          potPill.className = 'px-3 py-1 rounded-lg text-xs font-mono font-semibold ' + 
+            (aeo.citationPotential === 'High' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-amber-950 text-amber-400 border border-amber-800');
+        }
+
+        const m = aeo.metrics || {};
+        const kpiDirect = document.getElementById('aeo-kpi-direct-pct');
+        if (kpiDirect) kpiDirect.innerText = (m.directAnswerReadinessPct || 0) + '%';
+        const kpiBot = document.getElementById('aeo-kpi-bot-access');
+        if (kpiBot) kpiBot.innerText = (m.aiBotAccessCount || 6) + ' / ' + (m.aiBotTotalCount || 6) + ' Allowed';
+        const kpiGain = document.getElementById('aeo-kpi-info-gain');
+        if (kpiGain) kpiGain.innerText = (m.tableCount || 0) + ' Tables, ' + (m.dataPointCount || 0) + ' Metrics';
+        const kpiSchema = document.getElementById('aeo-kpi-schema-status');
+        if (kpiSchema) kpiSchema.innerText = m.hasFaqSchema ? 'FAQPage Active' : 'Missing FAQ Schema';
+
+        // Bot Matrix
+        const botTbody = document.getElementById('aeo-bot-matrix-body');
+        if (botTbody) {
+          let bHtml = '';
+          const bots = aeo.aiBots || [];
+          bots.forEach(b => {
+            const isAllowed = b.allowed;
+            const badge = isAllowed 
+              ? '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">✓ ALLOWED</span>'
+              : '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950 text-rose-300 border border-rose-800">✕ BLOCKED</span>';
+            const impact = b.bot === 'OAI-SearchBot' ? 'Live ChatGPT Search Citations' :
+                           b.bot === 'PerplexityBot' ? 'Perplexity Answer Grounding' :
+                           b.bot === 'ClaudeBot' ? 'Claude Real-time Web Search' :
+                           b.bot === 'Google-Extended' ? 'Google Gemini Grounding' : 'AI Corpus Ingestion';
+            bHtml += '<tr class="hover:bg-slate-800/30 transition">' +
+              '<td class="py-2.5 px-3 font-mono text-white font-medium">' + b.bot + '</td>' +
+              '<td class="py-2.5 px-3 text-slate-300">' + b.platform + '</td>' +
+              '<td class="py-2.5 px-3 font-mono text-xs text-indigo-300">' + b.directive + '</td>' +
+              '<td class="py-2.5 px-3 text-slate-400 text-[11px]">' + impact + '</td>' +
+              '<td class="py-2.5 px-3 text-right">' + badge + '</td>' +
+            '</tr>';
+          });
+          botTbody.innerHTML = bHtml;
+        }
+
+        // Question Answers
+        const qaContainer = document.getElementById('aeo-qa-list-container');
+        const qaList = aeo.questionAnswers || [];
+        const qaCountBadge = document.getElementById('aeo-qa-count-badge');
+        if (qaCountBadge) qaCountBadge.innerText = qaList.length + ' Questions Extracted';
+        if (qaContainer) {
+          if (qaList.length === 0) {
+            qaContainer.innerHTML = '<div class="p-4 bg-slate-900/60 rounded-xl text-center text-slate-400 text-xs">No question-based headings found on this page. Add H2 questions (What, How, Why) to qualify for direct answer citations.</div>';
+          } else {
+            let qaHtml = '';
+            qaList.forEach((q) => {
+              const suitBadge = q.snippetSuitability === 'Excellent'
+                ? '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">✓ Direct Answer Ready (' + q.wordCount + 'w)</span>'
+                : q.snippetSuitability === 'Too Long'
+                ? '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800">⚠️ Too Verbose (' + q.wordCount + 'w > 75)</span>'
+                : '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950 text-rose-300 border border-rose-800">✕ Too Short (' + q.wordCount + 'w < 30)</span>';
+
+              qaHtml += '<div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-2">' +
+                '<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">' +
+                  '<div class="flex items-center space-x-2">' +
+                    '<span class="text-xs font-mono uppercase bg-indigo-950 text-indigo-400 border border-indigo-800 px-1.5 py-0.5 rounded font-bold">' + q.level + '</span>' +
+                    '<strong class="text-white text-xs">' + q.heading + '</strong>' +
+                  '</div>' +
+                  suitBadge +
+                '</div>' +
+                '<p class="text-xs text-slate-300 pl-7 italic bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 leading-relaxed">"' + (q.extractedAnswer || 'No direct paragraph detected.') + '"</p>' +
+              '</div>';
+            });
+            qaContainer.innerHTML = qaHtml;
+          }
+        }
+
+        // Sample queries
+        const sampleBox = document.getElementById('aeo-sample-queries');
+        if (sampleBox) {
+          let sHtml = '';
+          const queries = qaList.map(q => q.heading).slice(0, 3);
+          const domain = a.project_id ? 'acme-saas.com' : 'example.com';
+          if (queries.length === 0) queries.push('What is ' + domain + '?', 'How does ' + domain + ' automate SEO?');
+          queries.forEach(q => {
+            sHtml += '<button onclick="setSimQuery(\\'' + q.replace(/'/g, "\\'") + '\\')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer">"' + q + '"</button>';
+          });
+          sampleBox.innerHTML = sHtml;
+          const input = document.getElementById('aeo-sim-query-input');
+          if (input && !input.value && queries.length > 0) {
+            input.value = queries[0];
+          }
+        }
+
+        // Schema code
+        const codeEl = document.getElementById('aeo-faq-code');
+        if (codeEl) {
+          codeEl.innerText = aeo.recommendedFaqSchema || '{\\n  "@context": "https://schema.org",\\n  "@type": "FAQPage"\\n}';
+        }
+
+        // Run initial simulation
+        if (qaList.length > 0) {
+          runAeoSimulate(qaList[0].heading);
+        }
+      } catch (err) {
+        console.error('loadAEO error:', err);
+      }
+    }
+
+    function setSimQuery(q) {
+      const input = document.getElementById('aeo-sim-query-input');
+      if (input) input.value = q;
+      runAeoSimulate(q);
+    }
+
+    // ── Run AI Search Citation Simulator ──────────────────────────────────────
+    async function runAeoSimulate(customQuery = null) {
+      const input = document.getElementById('aeo-sim-query-input');
+      const domainInput = document.getElementById('header-domain');
+      let domain = 'acme-saas.com';
+      try { domain = new URL(domainInput ? domainInput.value : 'https://acme-saas.com').hostname; } catch {}
+      const query = customQuery || (input ? input.value.trim() : '') || 'What is ' + domain + '?';
+      const btn = document.getElementById('aeo-sim-btn');
+      const btnText = document.getElementById('aeo-sim-btn-text');
+      if (btn) btn.disabled = true;
+      if (btnText) btnText.innerText = 'Synthesizing...';
+
+      try {
+        const res = await fetch('/api/aeo/simulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId: activeProjectId,
+            query,
+            domain,
+          }),
+        });
+        const data = await res.json();
+        const sim = data.simulation || {};
+
+        const answerEl = document.getElementById('aeo-sim-answer-text');
+        if (answerEl) {
+          answerEl.innerHTML = (sim.synthesizedAnswer || '').replace(/\\[1\\]/g, '<span class="inline-flex items-center justify-center w-4 h-4 text-[10px] bg-purple-600 text-white rounded-full font-bold ml-1 cursor-pointer" title="Verified Citation Source">[1]</span>');
+        }
+        const confEl = document.getElementById('aeo-sim-confidence');
+        if (confEl) confEl.innerText = (sim.confidenceScore || 92) + '% Grounded Confidence';
+        const modelTag = document.getElementById('aeo-sim-model-tag');
+        if (modelTag) modelTag.innerText = sim.model || 'gpt-4o-search-preview';
+
+        const sourcesBox = document.getElementById('aeo-sim-sources-container');
+        if (sourcesBox && sim.citationSources) {
+          let sHtml = '';
+          sim.citationSources.forEach(s => {
+            sHtml += '<div class="p-3 bg-slate-900/90 rounded-lg border border-slate-800 flex items-center justify-between">' +
+              '<div class="flex items-center space-x-2 truncate">' +
+                '<span class="w-5 h-5 rounded-full bg-purple-900/80 text-purple-300 font-bold text-[10px] flex items-center justify-center">' + s.index + '</span>' +
+                '<div class="truncate">' +
+                  '<strong class="text-white block truncate text-[11px]">' + s.title + '</strong>' +
+                  '<span class="text-slate-400 font-mono text-[10px] block truncate">' + s.url + '</span>' +
+                '</div>' +
+              '</div>' +
+              '<span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded font-mono shrink-0 ml-2">Crawled OK</span>' +
+            '</div>';
+          });
+          sourcesBox.innerHTML = sHtml;
+        }
+      } catch (e) {
+        console.error('runAeoSimulate error:', e);
+      } finally {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.innerText = 'Simulate AI Answer';
+      }
+    }
+
+    // ── Copy FAQ Schema JSON-LD ───────────────────────────────────────────────
+    function copyAeoSchema() {
+      const codeEl = document.getElementById('aeo-faq-code');
+      const text = codeEl ? codeEl.innerText : '';
+      navigator.clipboard.writeText(text).then(() => {
+        const btnText = document.getElementById('btn-copy-faq-text');
+        if (btnText) {
+          btnText.innerText = '✓ Copied to Clipboard!';
+          setTimeout(() => { btnText.innerText = 'Copy FAQ JSON-LD'; }, 2500);
+        }
+      });
     }
 
     // ── Load Projects ─────────────────────────────────────────────────────────
@@ -2108,11 +2762,25 @@ const HTML_APP = `<!DOCTYPE html>
           document.getElementById('overview-warnings').innerText = 'Warnings: ' + (m.warningsCount || 0);
           document.getElementById('overview-checks-ratio').innerText = 'Passed: ' + (m.checksPassed || 14) + ' / ' + (m.totalChecksEvaluated || 18);
 
+          // Update AEO Overview Info
+          if (m.aeo || a.aeo) {
+            const aeo = m.aeo || a.aeo;
+            const aeoBadge = document.getElementById('overview-aeo-badge');
+            const aeoStats = document.getElementById('overview-aeo-stats');
+            if (aeoBadge) aeoBadge.innerText = 'Grade ' + (aeo.aeoGrade || 'B+') + ' (' + (aeo.aeoScoreExact || aeo.aeoScore) + ')';
+            if (aeoStats) {
+              const bCount = aeo.metrics?.aiBotAccessCount || 6;
+              const bTot = aeo.metrics?.aiBotTotalCount || 6;
+              const directPct = aeo.metrics?.directAnswerReadinessPct || 50;
+              aeoStats.innerText = bCount + ' of ' + bTot + ' AI bots allowed • ' + directPct + '% Direct Answer readiness.';
+            }
+          }
 
           document.getElementById('summary-text').innerText =
             'Precision audit completed for ' + url + '. Weighted score: ' + a.score_overall + '/100 (Grade: ' + a.grade + '). Discovered ' + (data.pagesCount || 1) + ' page(s) with ' + (data.issuesCount || 0) + ' actionable issues and ' + (m.checksPassed || 14) + ' passed checks.';
 
           loadIssues();
+          loadAEO();
         }
       } catch (err) {
         document.getElementById('summary-text').innerText = 'Audit complete (simulated diagnostic mode).';
@@ -2291,17 +2959,29 @@ const server = http.createServer(async (req, res) => {
         pageData = { html: '<!DOCTYPE html><html><head><title>Home</title></head><body><h1>Welcome</h1></body></html>', statusCode: 200, loadTimeMs: 420, ttfbMs: 120 };
       }
 
+      // Fetch robots.txt if available
+      let robotsTxt = '';
+      try {
+        const robotsUrl = new URL('/robots.txt', targetUrl).toString();
+        const robotsRes = await fetchPageHttp(robotsUrl, 4000);
+        if (robotsRes.statusCode === 200 && robotsRes.html) {
+          robotsTxt = robotsRes.html;
+        }
+      } catch {}
+
       const parsed = parseHtmlPrecision(pageData.html, targetUrl);
       const crawled = [{
         url: targetUrl,
         statusCode: pageData.statusCode,
         loadTimeMs: pageData.loadTimeMs,
         ttfbMs: pageData.ttfbMs,
+        html: pageData.html,
+        rawHtml: pageData.html,
         parsed,
       }];
 
-      // 2. Evaluate with Precision 18-point checks
-      const evaluation = evaluateAuditPrecision(crawled);
+      // 2. Evaluate with Precision 18-point checks + AEO Engine
+      const evaluation = evaluateAuditPrecision(crawled, null, robotsTxt);
 
       // 3. Save to Store
       const savedAudit = store.saveAudit({
@@ -2314,6 +2994,7 @@ const server = http.createServer(async (req, res) => {
         grade: evaluation.grade,
         passedChecks: evaluation.passedChecks,
         metrics: evaluation.metrics,
+        aeo: evaluation.aeo,
       });
 
       // Save page
@@ -2407,6 +3088,25 @@ const server = http.createServer(async (req, res) => {
       recipient: 'admin@seofix.ai',
       message: 'Transactional audit alert dispatched via Resend adapter.',
     }));
+  }
+
+  // 12. AEO & GEO Search Engine Simulation
+  if (pathname === '/api/aeo/simulate' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const projectId = body.projectId || 'proj_acme_saas';
+    const query = body.query || '';
+    let domain = body.domain || 'acme-saas.com';
+    
+    const latestAudit = store.getLatestAudit(projectId);
+    const aeoResult = latestAudit?.aeo || latestAudit?.metrics?.aeo || AEOEngine.analyzeAEO(
+      '<h2>What is ' + domain + '?</h2><p>' + domain + ' is an automated enterprise SEO auditing platform providing real-time diagnostics and AI recommendations.</p>',
+      'https://' + domain,
+      ''
+    );
+
+    const simulation = AEOEngine.simulateCitation(query, domain, aeoResult);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ simulation }));
   }
 
   // Default: Serve Web App
